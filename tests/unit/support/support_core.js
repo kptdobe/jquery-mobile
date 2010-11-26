@@ -3,25 +3,11 @@
  */
 
 (function( $ ) {
-	//NOTE alert tester that running the file locally will not work for these tests
-	if ( location.protocol == "file:" ) {
-		var message = "Tests require script reload and cannot be run via file: protocol";
+	$.testHelper.excludeFileProtocol(function(){
+		var	prependToFn = $.fn.prependTo,
+				libName = "jquery.mobile.support.js";
 
-		test(message, function(){
-			ok(false, message);
-		});
-	} else {
-		var reloadCount = 0,
-		lib = $("script[src$=support.js]"),
-	  src = lib.attr('src'),
-	  reloadLib = function(){
-			//NOTE append "cache breaker" to force reload
-			lib.attr('src', src + "?" + reloadCount++);
-			$("body").append(lib);
-	  },
-		prependToFn = $.fn.prependTo;
-
-		module("mobile.support", {
+		module(libName, {
 			teardown: function(){
 				//NOTE undo any mocking
 				$.fn.prependTo = prependToFn;
@@ -42,7 +28,7 @@
 			history.pushState = function(){};
 			$.mobile.media = function(){ return true; };
 
-			reloadLib();
+			$.testHelper.reloadLib(libName);
 
 			ok($.support.orientation);
 			ok($.support.touch);
@@ -55,7 +41,7 @@
 			delete window["orientation"];
 			delete document["ontouchend"];
 
-			reloadLib();
+			$.testHelper.reloadLib(libName);
 
 			ok(!$.support.orientation);
 			ok(!$.support.touch);
@@ -75,17 +61,17 @@
 
 		test( "detects dynamic base tag when new base element added and base href updates", function(){
 			mockBaseCheck(location.protocol + '//' + location.host + location.pathname + "ui-dir/");
-			reloadLib();
+			$.testHelper.reloadLib(libName);
 			ok($.support.dynamicBaseTag);
 		});
 
 		test( "detects no dynamic base tag when new base element added and base href unchanged", function(){
 			mockBaseCheck('testurl');
-			reloadLib();
+			$.testHelper.reloadLib(libName);
 			ok(!$.support.dynamicBaseTag);
 		});
 
 		//TODO propExists testing, refactor propExists into mockable method
 		//TODO scrollTop testing, refactor scrollTop logic into mockable method
-	}
+	});
 })(jQuery);
