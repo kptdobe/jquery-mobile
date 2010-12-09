@@ -20,14 +20,19 @@
 					newPath = location.hash;
 				}
 				newPath = newPath.replace(/#/,'').split('/');
-				newPath.pop();
+				if(newPath.length){
+					var lastSegment = newPath[newPath.length-1];
+					if( lastSegment.indexOf('.') > -1 || lastSegment == ''){
+						newPath.pop();
+					}
+				}
 				return newPath.join('/') + (newPath.length ? '/' : '');
 			},
 			
 			//return the substring of a filepath before the sub-page key, for making a server request 
 			getFilePath: function( path ){
 				var splitkey = '&' + $.mobile.subPageUrlKey;
-				return path.indexOf( splitkey ) > -1 ? path.split( splitkey )[0] : path;
+				return path && path.indexOf( splitkey ) > -1 ? path.split( splitkey )[0] : path;
 			},
 			
 			set: function( path, disableListening){
@@ -36,7 +41,7 @@
 			},
 			
 			//location pathname from intial directory request
-			origin: null,
+			origin: '',
 			
 			setOrigin: function(){
 				path.origin = path.get( location.protocol + '//' + location.host + location.pathname );
@@ -85,7 +90,6 @@
 		
 		//set location pathname from intial directory request
 		path.setOrigin();
-	
 
 /* 
 	internal utility functions
@@ -134,7 +138,7 @@
 
 	// changepage function 
 	$.mobile.changePage = function( to, transition, back, changeHash){
-
+	
 		//from is always the currently viewed page
 		var toIsArray = $.type(to) === "array",
             from = toIsArray ?
@@ -151,10 +155,12 @@
 			back = (back !== undefined) ? back : ( urlStack.length > 1 && urlStack[ urlStack.length - 2 ].url === url ),
 			transition = (transition !== undefined) ? transition : $.mobile.defaultTransition;
 			
+
 		//If we are trying to transition to the same page that we are currently on ignore the request.
-		if(urlStack.length > 1 && url === urlStack[urlStack.length -1].url) {
+		if(urlStack.length > 1 && url === urlStack[urlStack.length -1].url && !toIsArray ) {
 			return;
 		}
+		
 		
 		if( $.type(to) === "object" && to.url ){
 			url = to.url,
@@ -167,6 +173,9 @@
 				data = undefined;
 			}
 		}
+		
+		
+		
 			
 		//reset base to pathname for new request
 		if(base){ base.reset(); }
@@ -216,7 +225,8 @@
 				$.mobile.silentScroll( to.data( 'lastScroll' ) );
 				
 				//trigger show/hide events, allow preventing focus change through return false		
-				if( from.data("page")._trigger("hide", null, {nextPage: to}) !== false && to.data("page")._trigger("show", null, {prevPage: from}) !== false ){
+				from.data("page")._trigger("hide", null, {nextPage: to});
+				if( to.data("page")._trigger("show", null, {prevPage: from}) !== false ){
 					$.mobile.activePage = to;
 				}
 			};
@@ -247,9 +257,12 @@
 		function enhancePage(){
 			
 			//set next page role, if defined
-			if ( nextPageRole ) {
-				to.attr( "data-role", nextPageRole );
-				nextPageRole = undefined;
+			if ( nextPageRole || to.data('role') == 'dialog' ) {
+				changeHash = false;
+				if(nextPageRole){
+					to.attr( "data-role", nextPageRole );
+					nextPageRole = null;
+				}
 			}
 			
 			//run page plugin			
@@ -258,11 +271,11 @@
 
 		//if url is a string
 		if( url ){
-			to = $( "[id='" + url + "']" ),
+			to = $( "[data-url='" + url + "']" );
 			fileUrl = path.getFilePath(url);
 		}
 		else{ //find base url of element, if avail
-			var toID = to.attr('id'),
+			var toID = to.attr('data-url'),
 				toIDfileurl = path.getFilePath(toID);
 				
 			if(toID != toIDfileurl){
@@ -291,13 +304,12 @@
 				type: type,
 				data: data,
 				success: function( html ) {
-				
 					if(base){ base.set(fileUrl); }
 					
 					var all = $("<div></div>");
 					//workaround to allow scripts to execute when included in page divs
 					all.get(0).innerHTML = html;
-					to = all.find('[data-role="page"]');
+					to = all.find('[data-role="page"], [data-role="dialog"]').first();
 					
 					//rewrite src and href attrs to use a base url
 					if( !$.support.dynamicBaseTag ){
@@ -314,24 +326,9 @@
 							}
 						});
 					}
-					
-					//preserve ID on a retrieved page
-					if ( to.attr('id') ) {
-						//wrap page and transfer data-attrs if it has an ID
-						var copyAttrs = ['data-role', 'data-theme', 'data-fullscreen'], //TODO: more page-level attrs?
-							wrapper = to.wrap( "<div>" ).parent();
-							
-						$.each(copyAttrs,function(i){
-							if( to.attr( copyAttrs[ i ] ) ){
-								wrapper.attr( copyAttrs[ i ], to.attr( copyAttrs[ i ] ) );
-								to.removeAttr( copyAttrs[ i ] );
-							}
-						});	
-						to = wrapper;
-					}
 
 					to
-						.attr( "id", fileUrl )
+						.attr( "data-url", fileUrl )
 						.appendTo( $.mobile.pageContainer );
 						
 					enhancePage();
@@ -340,6 +337,7 @@
 				error: function() {
 					$.mobile.pageLoading( true );
 					removeActiveLinkClass(true);
+					base.set(path.get());
 					$("<div class='ui-loader ui-overlay-shadow ui-body-e ui-corner-all'><h1>Error Loading Page</h1></div>")
 						.css({ "display": "block", "opacity": 0.96, "top": $(window).scrollTop() + 100 })
 						.appendTo( $.mobile.pageContainer )
@@ -374,9 +372,7 @@
         }
     };
 
-
-	
-/* Event Bindings - hashchange, submit, and click */	
+    /* Event Bindings - hashchange, submit, and click */	
 	
 	//bind to form submit events, handle with Ajax
 	$('form').live('submit', function(event){
@@ -410,6 +406,7 @@
 	
 	//click routing - direct to HTTP or Ajax, accordingly
 	$( "a" ).live( "click", function(event) {
+	
 		if( !$.mobile.ajaxLinksEnabled ){ return; }
 		var $this = $(this),
 			//get href, remove same-domain protocol and host
@@ -417,8 +414,7 @@
 			//if target attr is specified, it's external, and we mimic _blank... for now
 			target = $this.is( "[target]" ),
 			//if it still starts with a protocol, it's external, or could be :mailto, etc
-			external = target || /^(:?\w+:)/.test( href ) || $this.is( "[rel=external]" ),
-			target = $this.is( "[target]" );
+			external = target || /^(:?\w+:)/.test( href ) || $this.is( "[rel=external]" );
 
 		if( href === '#' ){
 			//for links created purely for interaction - ignore
@@ -442,8 +438,7 @@
 		else {	
 			//use ajax
 			var transition = $this.data( "transition" ),
-				back = $this.data( "back" ),
-				changeHashOnSuccess = !$this.is( "[data-rel="+ $.mobile.nonHistorySelectors +"]" );
+				back = $this.data( "back" );
 				
 			nextPageRole = $this.attr( "data-rel" );	
 	
@@ -454,7 +449,7 @@
 			
 			href.replace(/^#/,'');
 			
-			$.mobile.changePage(href, transition, back, changeHashOnSuccess);			
+			$.mobile.changePage(href, transition, back);			
 		}
 		event.preventDefault();
 	});
